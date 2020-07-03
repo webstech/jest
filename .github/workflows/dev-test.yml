@@ -1,0 +1,67 @@
+# Run tests against a developer push
+#
+# This will run only if configured to run.  It can be restricted to specific
+# tests.
+#
+# Configuration is done using secrets.
+# RUNJESTCI - set to a value to enable this workflow
+# TESTCASE - set to the specific tests to be run and passed to the CLI
+#
+
+name: dev-test
+
+on:
+  push:
+    branches-ignore: [ master ]
+env:
+  RUNJESTCI: ${{ secrets.RUNJESTCI }}
+
+jobs:
+  test:
+    name: Node v${{ matrix.node-version }} on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [14.x]
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check if running
+        if: ${{ env.RUNJESTCI }}
+        shell: bash
+        run: echo hello
+      - name: Set git config
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.symlinks true
+        if: ${{ success() }} && runner.os == 'Windows'
+      - uses: actions/checkout@v2
+        if: ${{ success() }}
+      - name: Get yarn cache
+        if: ${{ success() }}
+        id: yarn-cache
+        run: echo "::set-output name=dir::$(yarn cache dir)"
+      - uses: actions/cache@v1
+        if: ${{ success() }}
+        with:
+          path: ${{ steps.yarn-cache.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-yarn-
+      - name: Use Node.js ${{ matrix.node-version }}
+        if: ${{ success() }}
+        uses: actions/setup-node@v1.4.2
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: install
+        if: ${{ success() }}
+        run: yarn install-no-ts-build
+      - name: run tests
+        if: ${{ success() }}
+        env:
+          # use secret to limit to specific tests (eg packages/jest-console)
+          TESTCASE: ${{ secrets.TESTCASE }}
+
+        run: yarn test ${{ env.TESTCASE }}
